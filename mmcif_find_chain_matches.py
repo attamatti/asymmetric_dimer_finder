@@ -121,6 +121,7 @@ def parse_single(chunk):
 
 def get_polys(labels,data,skip):
     if skip == False:
+        print('False')
         polys = []
         entities = {}           #{entityID:name}
         for i in data:
@@ -138,10 +139,13 @@ def get_polys(labels,data,skip):
                 entities[id] = name
         return(entities)
     elif skip == True:
+        print('True')
         return(labels)
 ### make tmp dir
 if os.path.isdir('tmp') == False:
     subprocess.call(['mkdir','tmp'])
+else:
+    subprocess.call(['rm tmp/*'],shell=True)
 tmpdir ='{0}/tmp'.format(os.getcwd())
 
 ### read the mmcif file
@@ -190,8 +194,8 @@ else:
 chimerascript = open('tmp/chimera_script.cmd','w')
 chimerascript.write('open {0}/{1}\n'.format(os.getcwd(),sys.argv[1]))
 for i in matches:
-    chimerascript.write('findclash :.{0} test  :.{1} selectClashes true overlapCutoff -1.0 saveFile {3}/{2}_{0}{1}_A.txt\n'.format(i[0],i[1],sys.argv[1].split('.')[0],tmpdir))
-    chimerascript.write('findclash :.{1} test  :.{0} selectClashes true overlapCutoff -1.0 saveFile {3}/{2}_{0}{1}_B.txt\n'.format(i[0],i[1],sys.argv[1].split('.')[0],tmpdir))
+    chimerascript.write('findclash :.{0}&protein test  :.{1}&protein selectClashes true overlapCutoff -2.0 saveFile {3}/{2}_{0}{1}_A.txt\n'.format(i[0],i[1],sys.argv[1].split('.')[0],tmpdir))
+    chimerascript.write('findclash :.{1}&protein test  :.{0}&protein selectClashes true overlapCutoff -2.0 saveFile {3}/{2}_{0}{1}_B.txt\n'.format(i[0],i[1],sys.argv[1].split('.')[0],tmpdir))
 chimerascript.close()
 
 ###run the chimera scripts
@@ -209,20 +213,69 @@ def parse_contact_data(cdata):
             contactslist.append('{0} {1}'.format(c1,c2))
     return(contactslist)
 
-def match_contacts(d1,d2):
+def match_contacts(d1,d2,chain1,chain2):
     hitcount = 0
+    d11 = [x.split()[0] for x in d1]
+    d22 = [x.split()[0] for x in d2]
+    misslistA,misslistB = [],[]
+    hitlistA,hitlistB = [],[]
     for i in d1:
-        rev = '{0} {1}'.format(i.split()[1],i.split()[0])
-        if rev in d2:
+        switched = '.{0}@'.format(chain2).join([i.split()[0].split('.')[0],i.split()[0].split('@')[-1]])
+        switched2 = '.{0}@'.format(chain1).join([i.split()[1].split('.')[0],i.split()[1].split('@')[-1]])
+        if switched in d22:
             hitcount+=1
+            hitlistA.append(i)
+        else:
+            #print('miss',[switched,switched2],i)
+            misslistA.append([i,[switched,switched2]])
+    print('{0} vs {1} {2}/{3} interactions found'.format(chain1,chain2,hitcount,len(d1))) 
+    hitcount = 0
     for i in d2:
-        rev = '{0} {1}'.format(i.split()[1],i.split()[0])
-        if rev in d1:
+        switched = '.{0}@'.format(chain1).join([i.split()[0].split('.')[0],i.split()[0].split('@')[-1]])
+        switched2 = '.{0}@'.format(chain2).join([i.split()[1].split('.')[0],i.split()[1].split('@')[-1]])
+        if switched in d11:
             hitcount+=1
+            hitlistB.append(i)
+        else:
+            #print('miss',[switched,switched2],i)
+            misslistB.append([i,[switched,switched2]])
+    print('{0} vs {1} {2}/{3} interactions found'.format(chain2, chain1,hitcount,len(d1))) 
     total = len(d1)+len(d2)
     if len(d1)+len(d2) > 0:
-        return(float(hitcount)/float((len(d1)+len(d2))))
+        return(float(len(hitlistA)+len(hitlistB))/float((len(d1)+len(d2))),misslistA,misslistB,hitlistA,hitlistB)
 
+def match_contacts_simple(d1,d2,chain1,chain2):
+    hitcount = 0
+    d11 = [x.split()[0].split('@')[0] for x in d1]
+    d22 = [x.split()[0].split('@')[0] for x in d2]
+    print(d11)
+    misslistA,misslistB = [],[]
+    hitlistA,hitlistB = [],[]
+    print('{0} vs {1}'.format(chain1,chain2))
+    for i in d1:
+        switched = i.split()[0].split('.')[0]+'.'+chain2
+        switched2 = i.split()[1].split('.')[0]+'.'+chain1
+        if switched in d22:
+            hitcount+=1
+            hitlistA.append(i)
+        else:
+            #print('miss',[switched,switched2],i)
+            misslistA.append([i,[switched,switched2]])
+    
+    print('{0} vs {1}'.format(chain1,chain2))
+    for i in d2:
+        switched = i.split()[0].split('.')[0]+'.'+chain1
+        switched2 = i.split()[1].split('.')[0]+'.'+chain2
+        if switched in d11:
+            hitcount+=1
+            hitlistB.append(i)
+        else:
+            #print('miss',[switched,switched2],i)
+            misslistB.append([i,[switched,switched2]])
+    total = len(d1)+len(d2)
+    if len(d1)+len(d2) > 0:
+        return(float(hitcount)/float((len(d1)+len(d2))),misslistA,misslistB,hitlistA,hitlistB)
+    
 ### read the chimera outputs
 chifiles = glob.glob('{0}/*.txt'.format(tmpdir))
 done = []
@@ -237,4 +290,25 @@ for i in chifiles:
         contactdatab = open(bfile,'r').readlines()
         contactsa = parse_contact_data(contactdataa)
         contactsb = parse_contact_data(contactdatab)
-        print('checking matched chains {0} contact correlation = {1}'.format(pair,match_contacts(contactsa,contactsb)))
+        if len(contactsa) > 0 and len(contactsb) > 0:
+            corr,missA,missB,hitA,hitB = match_contacts(contactsa,contactsb,pair[0],pair[1])
+            output = open('{0}_colors.cmd'.format(filename,pair[0],pair[1]),'w')
+            print('checking matched chains {0} contact correlation = {1}\n'.format(pair,corr))
+            
+            output.write('~distance; ')
+            output.write('transparency 0; ')
+            output.write('color white; ')
+            output.write('color cyan :.{0}; '.format(pair[0]))
+            output.write('color hotpink :.{0}; '.format(pair[1]))
+            for i in hitA:
+                output.write('color green {0}; '.format(i))
+            for i in missA:
+                output.write('color red {0}; '.format(i[0].split()[0]))
+                output.write('color blue {0}; '.format(i[0].split()[1]))
+                output.write('color yellow {0}; '.format(i[1][0]))
+                output.write('color orange {0}; '.format(i[1][1]))
+                #output.write('distance {0}\n'.format(i[0]))
+                #output.write('distance {0} {1}\n'.format(i[1][0],i[1][1]))
+            
+            output.write('transparency 90 @/color=white\n')
+            output.close()
