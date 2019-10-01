@@ -121,7 +121,6 @@ def parse_single(chunk):
 
 def get_polys(labels,data,skip):
     if skip == False:
-        print('False')
         polys = []
         entities = {}           #{entityID:name}
         for i in data:
@@ -139,17 +138,28 @@ def get_polys(labels,data,skip):
                 entities[id] = name
         return(entities)
     elif skip == True:
-        print('True')
         return(labels)
-### make tmp dir
+### make necessary dirs
 if os.path.isdir('tmp') == False:
     subprocess.call(['mkdir','tmp'])
 else:
     subprocess.call(['rm tmp/*'],shell=True)
 tmpdir ='{0}/tmp'.format(os.getcwd())
 
+if os.path.isdir('vis') == False:
+    subprocess.call(['mkdir','vis'])
+
+
 ### read the mmcif file
 chunks = parse_mmcif(sys.argv[1])
+
+# determine if it's a NMR ensemble - needs to be treated differently
+NMR_ensemble = False
+for i in chunks:
+    for j in i:
+        if 'pdbx_nmr' in j:
+            NMR_ensemble = True
+            break
 entity_chunk = (return_chunks(chunks,'_entity.id'))
 elabels,edata,skip = parse_loop(entity_chunk)
 polyids = (get_polys(elabels,edata,skip))            #{entityID:name}
@@ -167,15 +177,19 @@ if strand_chunk[0][1] == 'loop_\n':
 else:
     chaindic = parse_single(strand_chunk)
 
-    
-print('\nfile: {0}\tfound {1} polymer(s)'.format(sys.argv[1].split('.')[0],len(polyids)))
+if NMR_ensemble == False:    
+    print('\nfile: {0}\tfound {1} polymer(s)'.format(sys.argv[1].split('.')[0],len(polyids)))
+else:
+    print('\nfile: {0}\tNMR emsemble\tfound {1} polymer(s)'.format(sys.argv[1].split('.')[0],len(polyids)))
+
 print('Chain\tID\tName')
 
 
-
 ### identify matching chains
+chainkeys = list(chaindic)
+chainkeys.sort()
 
-for i in chaindic:                      #coverted to {chain:[entity_id,Name]}
+for i in chainkeys:                      #coverted to {chain:[entity_id,Name]}
     print('{0}\t{1}\t{2}'.format(i,chaindic[i],polyids[chaindic[i]]))
     chaindic[i] = [chaindic[i],polyids[chaindic[i]]]
 matches = []
@@ -186,20 +200,21 @@ for i in chaindic:
                 matches.append([i,j])
 if len(matches) == 0:
     sys.exit('{0} matching chains'.format(len(matches)))
-else:
-    print('{0} matching chains'.format(len(matches)))
-    
 
 ### write the chimera scripts to check for contacts
 chimerascript = open('tmp/chimera_script.cmd','w')
 chimerascript.write('open {0}/{1}\n'.format(os.getcwd(),sys.argv[1]))
 for i in matches:
-    chimerascript.write('findclash :.{0}&protein test  :.{1}&protein selectClashes true overlapCutoff -2.0 saveFile {3}/{2}_{0}{1}_A.txt\n'.format(i[0],i[1],sys.argv[1].split('.')[0],tmpdir))
-    chimerascript.write('findclash :.{1}&protein test  :.{0}&protein selectClashes true overlapCutoff -2.0 saveFile {3}/{2}_{0}{1}_B.txt\n'.format(i[0],i[1],sys.argv[1].split('.')[0],tmpdir))
+    if NMR_ensemble == False:
+        chimerascript.write('findclash :.{0}&protein test  :.{1}&protein selectClashes true overlapCutoff -2.0 saveFile {3}/{2}_{0}{1}_A.txt\n'.format(i[0],i[1],sys.argv[1].split('.')[0],tmpdir))
+        chimerascript.write('findclash :.{1}&protein test  :.{0}&protein selectClashes true overlapCutoff -2.0 saveFile {3}/{2}_{0}{1}_B.txt\n'.format(i[0],i[1],sys.argv[1].split('.')[0],tmpdir))
+    elif NMR_ensemble == True:
+        chimerascript.write('findclash #0.1:.{0}&protein test  #0.1:.{1}&protein selectClashes true overlapCutoff -2.0 saveFile {3}/{2}_{0}{1}_A.txt\n'.format(i[0],i[1],sys.argv[1].split('.')[0],tmpdir))
+        chimerascript.write('findclash #0.1:.{1}&protein test  #0.1:.{0}&protein selectClashes true overlapCutoff -2.0 saveFile {3}/{2}_{0}{1}_B.txt\n'.format(i[0],i[1],sys.argv[1].split('.')[0],tmpdir))
+
 chimerascript.close()
 
 ###run the chimera scripts
-print('running chimera')
 runchimera = subprocess.Popen('{0} --nogui {1}/chimera_script.cmd'.format(chimerapath,tmpdir), shell=True, stdout=subprocess.PIPE)
 chimeraout = runchimera.stdout.read()
 
@@ -207,6 +222,7 @@ chimeraout = runchimera.stdout.read()
 def parse_contact_data(cdata):
     contactslist = []        
     for i in cdata:
+        i = i.replace('#0.1:',':')
         if i[0] == ':':
             c1 = i.split()[0]
             c2 = i.split()[1]
@@ -228,7 +244,7 @@ def match_contacts(d1,d2,chain1,chain2):
         else:
             #print('miss',[switched,switched2],i)
             misslistA.append([i,[switched,switched2]])
-    print('{0} vs {1} {2}/{3} interactions found'.format(chain1,chain2,hitcount,len(d1))) 
+    print('\n{0} vs {1} {2}/{3} interactions found'.format(chain1,chain2,hitcount,len(d1))) 
     hitcount = 0
     for i in d2:
         switched = '.{0}@'.format(chain1).join([i.split()[0].split('.')[0],i.split()[0].split('@')[-1]])
@@ -244,44 +260,45 @@ def match_contacts(d1,d2,chain1,chain2):
     if len(d1)+len(d2) > 0:
         return(float(len(hitlistA)+len(hitlistB))/float((len(d1)+len(d2))),misslistA,misslistB,hitlistA,hitlistB)
 
-def match_contacts_simple(d1,d2,chain1,chain2):
-    hitcount = 0
-    d11 = [x.split()[0].split('@')[0] for x in d1]
-    d22 = [x.split()[0].split('@')[0] for x in d2]
-    print(d11)
-    misslistA,misslistB = [],[]
-    hitlistA,hitlistB = [],[]
-    print('{0} vs {1}'.format(chain1,chain2))
-    for i in d1:
-        switched = i.split()[0].split('.')[0]+'.'+chain2
-        switched2 = i.split()[1].split('.')[0]+'.'+chain1
-        if switched in d22:
-            hitcount+=1
-            hitlistA.append(i)
-        else:
-            #print('miss',[switched,switched2],i)
-            misslistA.append([i,[switched,switched2]])
-    
-    print('{0} vs {1}'.format(chain1,chain2))
-    for i in d2:
-        switched = i.split()[0].split('.')[0]+'.'+chain1
-        switched2 = i.split()[1].split('.')[0]+'.'+chain2
-        if switched in d11:
-            hitcount+=1
-            hitlistB.append(i)
-        else:
-            #print('miss',[switched,switched2],i)
-            misslistB.append([i,[switched,switched2]])
-    total = len(d1)+len(d2)
-    if len(d1)+len(d2) > 0:
-        return(float(hitcount)/float((len(d1)+len(d2))),misslistA,misslistB,hitlistA,hitlistB)
-    
+
 ### read the chimera outputs
 chifiles = glob.glob('{0}/*.txt'.format(tmpdir))
 done = []
+
+# determine which chains are forming higher level homo-oligomers
+mmerdic = {}                    #{chain:# of other matches with > 0 contacts}
+for i in chifiles:
+    filehalf = i.split('_')[-1].replace('.txt','')
+    filepair = [i.split('_')[-2][0],i.split('_')[-2][1]]
+    try:
+        float(mmerdic[filepair[0]])
+    except:
+        mmerdic[filepair[0]] = 0
+    try:
+        float(mmerdic[filepair[1]])
+    except:
+        mmerdic[filepair[1]] = 0
+    if filehalf == 'A':
+        contacts = parse_contact_data(open(i,'r').readlines())
+        if len(contacts) > 0:
+            mmerdic[filepair[0]] +=1
+            mmerdic[filepair[1]] +=1
+
+# screen output about oligomerization state
+print('\nfinding homodimers\nchain\toligomer')
+for i in chainkeys:
+    if mmerdic[i] > 1:
+        mmer = 'higher order oligomer (score: {})'.format(mmerdic[i])
+    elif mmerdic[i] == 0:
+        mmer = 'no oligomers detected'
+    elif mmerdic[i] == 1:
+        mmer = '** homodimer detected **'
+    print('{0}\t{1}'.format(i,mmer))
+
+mainout = open('asym_dimer-find.txt','a')
 for i in chifiles:
     pair = (i.split('/')[-1].split('_')[1])
-    if pair not in done:
+    if pair not in done and mmerdic[pair[0]] == 1:
         filename = '_'.join(i.split('_')[0:-1])
         afile = '{0}_A.txt'.format(filename)
         bfile = '{0}_B.txt'.format(filename)
@@ -292,8 +309,8 @@ for i in chifiles:
         contactsb = parse_contact_data(contactdatab)
         if len(contactsa) > 0 and len(contactsb) > 0:
             corr,missA,missB,hitA,hitB = match_contacts(contactsa,contactsb,pair[0],pair[1])
-            output = open('{0}_colors.cmd'.format(filename,pair[0],pair[1]),'w')
-            print('checking matched chains {0} contact correlation = {1}\n'.format(pair,corr))
+            output = open('{0}_colors.cmd'.format(filename.replace('/tmp/','/vis/'),pair[0],pair[1]),'w')
+            print('{0} homodimer contact correlation = {1}\n'.format(pair,corr))
             
             output.write('~distance; ')
             output.write('transparency 0; ')
@@ -307,8 +324,8 @@ for i in chifiles:
                 output.write('color blue {0}; '.format(i[0].split()[1]))
                 output.write('color yellow {0}; '.format(i[1][0]))
                 output.write('color orange {0}; '.format(i[1][1]))
-                #output.write('distance {0}\n'.format(i[0]))
-                #output.write('distance {0} {1}\n'.format(i[1][0],i[1][1]))
             
             output.write('transparency 90 @/color=white\n')
             output.close()
+            mainout.write('{0},{1},{2},{3}\n'.format(sys.argv[1],pair[0],pair[1],corr))
+mainout.close()
