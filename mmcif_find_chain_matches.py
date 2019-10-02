@@ -31,8 +31,10 @@ def return_chunks(data,search_string):
         for j in i:
             if search_string in j:
                 return_list.append(i)
-    return(return_list)
-
+    if len(return_list) > 0:
+        return(return_list)
+    else:
+        sys.exit('FILE ERROR: no {0} header found in mmcif file'.format(search_string))
 def parse_loop(chunk):
     if 'loop_\n' in chunk[0]: 
         labels = {}         #{label:column_number}
@@ -65,7 +67,14 @@ def parse_loop(chunk):
                 trip=False
     
             n+=1
-        return(labels,data,False)
+	print(data)
+	n=0
+	for i in data:
+            if len(i) > 1:
+                data[n] = ['  '.join(i).replace('\n','').replace(';','')]
+		n+=1
+        print(data)
+	return(labels,data,False)
     else:
         for i in chunk[0]:
             if '_entity.id' in i:
@@ -121,6 +130,7 @@ def parse_single(chunk):
 
 def get_polys(labels,data,skip):
     if skip == False:
+        print labels
         polys = []
         entities = {}           #{entityID:name}
         for i in data:
@@ -152,6 +162,7 @@ if os.path.isdir('vis') == False:
 
 
 ### read the mmcif file
+print('input path: {0}'.format(sys.argv[1]))
 chunks = parse_mmcif(sys.argv[1])
 
 # determine if it's a NMR ensemble - needs to be treated differently
@@ -207,11 +218,11 @@ chimerascript = open('tmp/chimera_script.cmd','w')
 chimerascript.write('open {0}/{1}\n'.format(os.getcwd(),sys.argv[1]))
 for i in matches:
     if NMR_ensemble == False:
-        chimerascript.write('findclash :.{0}&protein test  :.{1}&protein selectClashes true overlapCutoff -1.0 saveFile {3}/{2}_{0}{1}_A.txt\n'.format(i[0],i[1],sys.argv[1].split('.')[0],tmpdir))
-        chimerascript.write('findclash :.{1}&protein test  :.{0}&protein selectClashes true overlapCutoff -1.0 saveFile {3}/{2}_{0}{1}_B.txt\n'.format(i[0],i[1],sys.argv[1].split('.')[0],tmpdir))
+        chimerascript.write('findclash :.{0}&protein test  :.{1}&protein selectClashes true overlapCutoff -1.0 saveFile {3}/{2}_{0}{1}_A.txt\n'.format(i[0],i[1],sys.argv[1].split('/')[-1].split('.')[0],tmpdir))
+        chimerascript.write('findclash :.{1}&protein test  :.{0}&protein selectClashes true overlapCutoff -1.0 saveFile {3}/{2}_{0}{1}_B.txt\n'.format(i[0],i[1],sys.argv[1].split('/')[-1].split('.')[0],tmpdir))
     elif NMR_ensemble == True:
-        chimerascript.write('findclash #0.1:.{0}&protein test  #0.1:.{1}&protein selectClashes true overlapCutoff -1.0 saveFile {3}/{2}_{0}{1}_A.txt\n'.format(i[0],i[1],sys.argv[1].split('.')[0],tmpdir))
-        chimerascript.write('findclash #0.1:.{1}&protein test  #0.1:.{0}&protein selectClashes true overlapCutoff -1.0 saveFile {3}/{2}_{0}{1}_B.txt\n'.format(i[0],i[1],sys.argv[1].split('.')[0],tmpdir))
+        chimerascript.write('findclash #0.1:.{0}&protein test  #0.1:.{1}&protein selectClashes true overlapCutoff -1.0 saveFile {3}/{2}_{0}{1}_A.txt\n'.format(i[0],i[1],sys.argv[1].split('/')[-1].split('.')[0],tmpdir))
+        chimerascript.write('findclash #0.1:.{1}&protein test  #0.1:.{0}&protein selectClashes true overlapCutoff -1.0 saveFile {3}/{2}_{0}{1}_B.txt\n'.format(i[0],i[1],sys.argv[1].split('/')[-1].split('.')[0],tmpdir))
 
 chimerascript.close()
 
@@ -300,9 +311,9 @@ mainout = open('asym_dimer-find.txt','a')
 for i in chifiles:
     pair = (i.split('/')[-1].split('_')[1])
     if pair not in done and mmerdic[pair[0]] == 1:
-        filename = '_'.join(i.split('_')[0:-1])
-        afile = '{0}_A.txt'.format(filename)
-        bfile = '{0}_B.txt'.format(filename)
+        filename = '_'.join(i.split('/')[-1].split('_')[0:-1])
+        afile = 'tmp/{0}_A.txt'.format(filename)
+        bfile = 'tmp/{0}_B.txt'.format(filename)
         done.append(pair)
         contactdataa = open(afile,'r').readlines()
         contactdatab = open(bfile,'r').readlines()
@@ -310,7 +321,7 @@ for i in chifiles:
         contactsb = parse_contact_data(contactdatab)
         if len(contactsa) > 0 and len(contactsb) > 0:
             corr,missA,missB,hitA,hitB = match_contacts(contactsa,contactsb,pair[0],pair[1])
-            output = open('{0}_colors.cmd'.format(filename.replace('/tmp/','/vis/'),pair[0],pair[1]),'w')
+            output = open('vis/{0}_colors.cmd'.format(filename.replace('/tmp/','/vis/'),pair[0],pair[1]),'w')
             print('{0} homodimer contact correlation = {1}\n'.format(pair,corr))
             
             output.write('~distance; ')
