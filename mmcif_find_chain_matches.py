@@ -159,7 +159,7 @@ if os.path.isdir('vis') == False:
 
 
 ### read the mmcif file
-print('input path: {0}'.format(sys.argv[1]))
+print('\ninput path: {0}'.format(sys.argv[1]))
 chunks = parse_mmcif(sys.argv[1])
 
 # determine if it's a NMR ensemble - needs to be treated differently
@@ -187,9 +187,9 @@ else:
     chaindic = parse_single(strand_chunk)
 
 if NMR_ensemble == False:    
-    print('\nfile: {0}\tfound {1} polymer(s)'.format(sys.argv[1].split('.')[0],len(polyids)))
+    print('file: {0}\tfound {1} polymer(s)'.format(sys.argv[1].split('.')[0],len(polyids)))
 else:
-    print('\nfile: {0}\tNMR emsemble\tfound {1} polymer(s)'.format(sys.argv[1].split('.')[0],len(polyids)))
+    print('file: {0}\tNMR emsemble\tfound {1} polymer(s)'.format(sys.argv[1].split('.')[0],len(polyids)))
 
 print('Chain\tID\tName')
 
