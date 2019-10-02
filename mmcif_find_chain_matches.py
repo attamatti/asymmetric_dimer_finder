@@ -128,7 +128,6 @@ def parse_single(chunk):
 
 def get_polys(labels,data,skip):
     if skip == False:
-        print labels
         polys = []
         entities = {}           #{entityID:name}
         for i in data:
