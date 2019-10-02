@@ -143,7 +143,8 @@ def get_polys(labels,data,skip):
 if os.path.isdir('tmp') == False:
     subprocess.call(['mkdir','tmp'])
 else:
-    subprocess.call(['rm tmp/*'],shell=True)
+    if len(glob.glob('tmp/*')) > 0:
+        subprocess.call(['rm tmp/*'],shell=True)
 tmpdir ='{0}/tmp'.format(os.getcwd())
 
 if os.path.isdir('vis') == False:
@@ -206,11 +207,11 @@ chimerascript = open('tmp/chimera_script.cmd','w')
 chimerascript.write('open {0}/{1}\n'.format(os.getcwd(),sys.argv[1]))
 for i in matches:
     if NMR_ensemble == False:
-        chimerascript.write('findclash :.{0}&protein test  :.{1}&protein selectClashes true overlapCutoff -2.0 saveFile {3}/{2}_{0}{1}_A.txt\n'.format(i[0],i[1],sys.argv[1].split('.')[0],tmpdir))
-        chimerascript.write('findclash :.{1}&protein test  :.{0}&protein selectClashes true overlapCutoff -2.0 saveFile {3}/{2}_{0}{1}_B.txt\n'.format(i[0],i[1],sys.argv[1].split('.')[0],tmpdir))
+        chimerascript.write('findclash :.{0}&protein test  :.{1}&protein selectClashes true overlapCutoff -1.0 saveFile {3}/{2}_{0}{1}_A.txt\n'.format(i[0],i[1],sys.argv[1].split('.')[0],tmpdir))
+        chimerascript.write('findclash :.{1}&protein test  :.{0}&protein selectClashes true overlapCutoff -1.0 saveFile {3}/{2}_{0}{1}_B.txt\n'.format(i[0],i[1],sys.argv[1].split('.')[0],tmpdir))
     elif NMR_ensemble == True:
-        chimerascript.write('findclash #0.1:.{0}&protein test  #0.1:.{1}&protein selectClashes true overlapCutoff -2.0 saveFile {3}/{2}_{0}{1}_A.txt\n'.format(i[0],i[1],sys.argv[1].split('.')[0],tmpdir))
-        chimerascript.write('findclash #0.1:.{1}&protein test  #0.1:.{0}&protein selectClashes true overlapCutoff -2.0 saveFile {3}/{2}_{0}{1}_B.txt\n'.format(i[0],i[1],sys.argv[1].split('.')[0],tmpdir))
+        chimerascript.write('findclash #0.1:.{0}&protein test  #0.1:.{1}&protein selectClashes true overlapCutoff -1.0 saveFile {3}/{2}_{0}{1}_A.txt\n'.format(i[0],i[1],sys.argv[1].split('.')[0],tmpdir))
+        chimerascript.write('findclash #0.1:.{1}&protein test  #0.1:.{0}&protein selectClashes true overlapCutoff -1.0 saveFile {3}/{2}_{0}{1}_B.txt\n'.format(i[0],i[1],sys.argv[1].split('.')[0],tmpdir))
 
 chimerascript.close()
 
