@@ -67,13 +67,11 @@ def parse_loop(chunk):
                 trip=False
     
             n+=1
-	print(data)
 	n=0
 	for i in data:
             if len(i) > 1:
                 data[n] = ['  '.join(i).replace('\n','').replace(';','')]
 		n+=1
-        print(data)
 	return(labels,data,False)
     else:
         for i in chunk[0]:
