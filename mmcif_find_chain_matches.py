@@ -162,6 +162,51 @@ def get_polys(labels,data,skip):
     elif skip == True:
         return(labels)
 
+def parse_assembly(chunk):	
+	oligolist = []
+	dimer = False
+	if '_loop' in chunk[0]:
+		labels = {}         #{label:column_number}
+		indata = False
+		data = []
+		n=0
+		inww = False
+		comblines = []
+		for i in chunk[0][2:]:
+			if i[0] != '_':
+				indata= True 
+	        
+			if indata == False:
+				labels[i.replace('\n','').strip()] = n
+	        
+			elif indata == True:
+				comblines.append(i)
+	
+			n+=1
+		splitdat = []
+		comblines = [''.join(comblines)]
+		comblines[0] = comblines[0].replace('\n',' ') 
+		for j in comblines[0].split():
+			if inww == False:
+				splitdat.append(j)
+			if inww == True:
+				splitdat[-1] = splitdat[-1]+j
+			if j[0] == ';':
+				inww = not inww
+		findat = [splitdat[i:i + len(labels)] for i in xrange(0, len(splitdat), len(labels))]
+		for i in findat:
+			if i[labels['_pdbx_struct_assembly.oligomeric_details']] == 'dimeric':
+				oligolist.append(i[labels['_pdbx_struct_assembly.id']])
+	else:
+		for i in chunk[0]:
+			if '_pdbx_struct_assembly.oligomeric_details' in i:
+				if 'dimeric' in i:
+					dimer = True
+		for i in chunk[0]:		
+			if dimer == True and '_pdbx_struct_assembly.id' in i:
+				oligolist = [i.replace('/n','').split()[-1]]
+	return(oligolist)
+
 ### make necessary dirs
 if os.path.isdir('tmp') == False:
     subprocess.call(['mkdir','tmp'])
@@ -190,6 +235,11 @@ entity_chunk = (return_chunks(chunks,'_entity.id'))
 elabels,edata,skip = parse_loop(entity_chunk)
 polyids = (get_polys(elabels,edata,skip))            #{entityID:name}
 strand_chunk = (return_chunks(chunks,'_entity_poly.pdbx_strand_id'))
+dimers_assembly_list = parse_assembly(return_chunks(chunks,'_pdbx_struct_assembly.oligomeric_details'))
+#chains_assemble_list = parse_chains_assembly(return_chunks(chunks,'_pdbx_struct_assembly_gen.asym_id_list'))
+# just write parse_chains_assembly : in chunk, out: [[A,B,C,D],[E,F,G,H]]
+# then check chin pairs against chains assemble list and flag as biological or not in final output 
+print(dimers_assembly_list)
 
 chaindic = {}           #{chain:entityID}
 if strand_chunk[0][1] == 'loop_\n':
