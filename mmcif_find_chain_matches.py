@@ -165,12 +165,12 @@ def get_polys(labels,data,skip):
 def parse_assembly(chunk):	
 	oligolist = []
 	dimer = False
-	if '_loop' in chunk[0]:
+	if 'loop_\n' in chunk[0]:
 		labels = {}         #{label:column_number}
 		indata = False
 		data = []
 		n=0
-		inww = False
+		inww = False	
 		comblines = []
 		for i in chunk[0][2:]:
 			if i[0] != '_':
@@ -185,27 +185,24 @@ def parse_assembly(chunk):
 			n+=1
 		splitdat = []
 		comblines = [''.join(comblines)]
-		comblines[0] = comblines[0].replace('\n',' ') 
+		comblines[0] = comblines[0].replace('\n',' ')		
+		
 		for j in comblines[0].split():
 			if inww == False:
 				splitdat.append(j)
 			if inww == True:
 				splitdat[-1] = splitdat[-1]+j
-			if j[0] == ';':
+			if j[0] == "'" or j[-1] == "'":
 				inww = not inww
 		findat = [splitdat[i:i + len(labels)] for i in xrange(0, len(splitdat), len(labels))]
 		for i in findat:
-			if i[labels['_pdbx_struct_assembly.oligomeric_details']] == 'dimeric':
-				oligolist.append(i[labels['_pdbx_struct_assembly.id']])
+			oligolist.append(int(i[labels['_pdbx_struct_assembly.oligomeric_count']]))
 	else:
-		for i in chunk[0]:
-			if '_pdbx_struct_assembly.oligomeric_details' in i:
-				if 'dimeric' in i:
-					dimer = True
 		for i in chunk[0]:		
-			if dimer == True and '_pdbx_struct_assembly.id' in i:
-				oligolist = [i.replace('/n','').split()[-1]]
+			if '_pdbx_struct_assembly.oligomeric_count' in i:
+				oligolist = [int(i.replace('/n','').split()[-1])]
 	return(oligolist)
+
 
 ### make necessary dirs
 if os.path.isdir('tmp') == False:
@@ -231,16 +228,19 @@ for i in chunks:
         if 'pdbx_nmr' in j:
             NMR_ensemble = True
             break
+
+
 entity_chunk = (return_chunks(chunks,'_entity.id'))
 elabels,edata,skip = parse_loop(entity_chunk)
 polyids = (get_polys(elabels,edata,skip))            #{entityID:name}
 strand_chunk = (return_chunks(chunks,'_entity_poly.pdbx_strand_id'))
-dimers_assembly_list = parse_assembly(return_chunks(chunks,'_pdbx_struct_assembly.oligomeric_details'))
-#chains_assemble_list = parse_chains_assembly(return_chunks(chunks,'_pdbx_struct_assembly_gen.asym_id_list'))
-# just write parse_chains_assembly : in chunk, out: [[A,B,C,D],[E,F,G,H]]
-# then check chin pairs against chains assemble list and flag as biological or not in final output 
-print(dimers_assembly_list)
 
+try:
+	dimer_assembly_list = parse_assembly(return_chunks(chunks,'_pdbx_struct_assembly.oligomeric_details'))
+except:
+	dimer_assembly_list = [0]	
+
+## get the entiy IDs and protein names of the different chains
 chaindic = {}           #{chain:entityID}
 if strand_chunk[0][1] == 'loop_\n':
     slabels,sdata = parse_loop_strand(strand_chunk)
@@ -253,6 +253,8 @@ if strand_chunk[0][1] == 'loop_\n':
 else:
     chaindic = parse_single(strand_chunk)
 
+## treat NMR ensembles differently because ofthe way the models are structured
+## use model #0.1/#1.1 instead of #0/#1
 if NMR_ensemble == False:    
     print('file: {0}\tfound {1} polymer(s)'.format(sys.argv[1].split('.')[0],len(polyids)))
 else:
@@ -281,7 +283,7 @@ if len(matches) == 0:
     stats.write('{0},{1}\n'.format(sys.argv[1].split('/')[-1],'NO_IDENTICAL_CHAINS'))
     sys.exit('{0} matching chains'.format(len(matches)))
 if len(matches) > 20:
-	stats.write('{0},TOO_MANY,{1}/n'.format(sys.argv[1].split('/')[-1],len(matches)))	
+	stats.write('{0},TOO_MANY,{1}\n'.format(sys.argv[1].split('/')[-1],len(matches)))	
 	sys.exit('Found {0} matching chains; too many matching chains - skipping'.format(len(matches)))
 
 ### write the chimera scripts to check for contacts
@@ -326,7 +328,7 @@ def match_contacts(d1,d2,chain1,chain2):
             hitlistA.append(i)
         else:
             misslistA.append([i,[switched,switched2]])
-    print('{0} vs {1} {2}/{3} interactions found'.format(chain1,chain2,hitcount,len(d1))) 
+    print('\n{0} vs {1} {2}/{3} interactions found'.format(chain1,chain2,hitcount,len(d1))) 
     hitcount = 0
     for i in d2:
         switched = '.{0}@'.format(chain1).join([i.split()[0].split('.')[0],i.split()[0].split('@')[-1]])
@@ -348,90 +350,123 @@ done = []
 
 # determine which chains are forming higher level homo-oligomers
 mmerdic = {}                    #{chain:# of other matches with > 0 contacts}
+partners = {}					#{chain:[partner1,partner2]}
 for i in chifiles:
-    filehalf = i.split('_')[-1].replace('.txt','')
-    filepair = [i.split('_')[-2][0],i.split('_')[-2][1]]
-    try:
-        float(mmerdic[filepair[0]])
-    except:
-        mmerdic[filepair[0]] = 0
-    try:
-        float(mmerdic[filepair[1]])
-    except:
-        mmerdic[filepair[1]] = 0
-    if filehalf == 'A':
-        contacts = parse_contact_data(open(i,'r').readlines())
-        if len(contacts) > 0:
-            mmerdic[filepair[0]] +=1
-            mmerdic[filepair[1]] +=1
+	filehalf = i.split('_')[-1].replace('.txt','')
+	filepair = [i.split('_')[-2][0],i.split('_')[-2][1]]
+	try:
+		float(mmerdic[filepair[0]])
+	except:
+		mmerdic[filepair[0]] = 0
+	try:
+		float(mmerdic[filepair[1]])
+	except:
+		mmerdic[filepair[1]] = 0
+	if filehalf == 'A':
+		contacts = parse_contact_data(open(i,'r').readlines())
+		if len(contacts) > 0:
+			try:
+				partners[filepair[0]].append(filepair[1])
+			except:
+				partners[filepair[0]] = [filepair[1]]
+			try:
+				partners[filepair[1]].append(filepair[0])
+			except:
+				partners[filepair[1]] = [filepair[0]]
+			mmerdic[filepair[0]] +=1
+			mmerdic[filepair[1]] +=1
+		elif len(contacts) == 0:
+			partners[filepair[0]] = []
+			partners[filepair[1]] = []
+
+
+## you've hooked up with everyone your partner has hooked up with :P
+partnerscores = {}				#{chain:total score}
+for i in partners:
+	partnerscores[i] = sum([mmerdic[x] for x in partners[i]])
 
 # screen output about oligomerization state
 print('\nfinding homodimers\nchain\toligomer')
-for i in chainkeys:
-    if mmerdic[i] > 1:
-        mmer = 'higher order oligomer (score: {})'.format(mmerdic[i])
-    elif mmerdic[i] == 0:
-        mmer = 'no oligomers detected'
-    elif mmerdic[i] == 1:
-        mmer = '** homodimer detected **'
-    print('{0}\t{1}'.format(i,mmer))
 
+for i in chainkeys:
+	try:
+		if partnerscores[i] > 1:
+			mmer = 'higher order oligomer (score: {0})'.format(partnerscores[i])
+		elif partnerscores[i] == 0:
+			mmer = 'no oligomers detected'
+		elif partnerscores[i] == 1:
+			if partnerscores[partners[i][0]] == 1:			
+				mmer = '** homodimer detected with chain {0}**'.format(partners[i][0])
+			else:
+				mmer = 'homodimer detected with chain {0} but not reciprocated'.format(partners[i][0]) 		
+		print('{0}\t{1}'.format(i,mmer))
+	except:
+		print('{0}\tskipping chain - not protein'.format(i))
+
+## compare the results of the chimera scripts and write main output
 mainout = open('asym_dimer-find.txt','a')
 homodimers = False
+hdcount = 0
 for i in chifiles:
-    homodimer = 0
-    pair = (i.split('/')[-1].split('_')[1])
-    if pair not in done and mmerdic[pair[0]] == 1:
-        filename = '_'.join(i.split('/')[-1].split('_')[0:-1])
-        afile = 'tmp/{0}_A.txt'.format(filename)
-        bfile = 'tmp/{0}_B.txt'.format(filename)
-        done.append(pair)
-        contactdataa = open(afile,'r').readlines()
-        contactdatab = open(bfile,'r').readlines()
-        contactsa = parse_contact_data(contactdataa)
-        contactsb = parse_contact_data(contactdatab)
+	homodimer = False
+	pair = (i.split('/')[-1].split('_')[1])
+	if pair not in done and partnerscores[pair[0]] == 1 and partnerscores[pair[1]] == 1:
+		filename = '_'.join(i.split('/')[-1].split('_')[0:-1])
+		afile = 'tmp/{0}_A.txt'.format(filename)
+		bfile = 'tmp/{0}_B.txt'.format(filename)
+		done.append(pair)
+		contactdataa = open(afile,'r').readlines()
+		contactdatab = open(bfile,'r').readlines()
+		contactsa = parse_contact_data(contactdataa)
+		contactsb = parse_contact_data(contactdatab)
 
-        if len(contactsa) > 0 and len(contactsb) > 0:
-            homodimer +=1
-            corr,missA,missB,hitA,hitB = match_contacts(contactsa,contactsb,pair[0],pair[1])
-            print('{0} homodimer contact correlation = {1}'.format(pair,corr))
+		if len(contactsa) > 0 and len(contactsb) > 0:
+			homodimer = True
+			corr,missA,missB,hitA,hitB = match_contacts(contactsa,contactsb,pair[0],pair[1])
+			print('{0} homodimer contact correlation = {1}'.format(pair,corr))
             
-	    ### do RMSD calculation here - write script
-	    chimerarmsd = open('{0}/chirmsd.cmd'.format(tmpdir),'w')
-	    if NMR_ensemble ==True:
-                chimerarmsd.write('open #0 {3}/{0};open #1 {3}/{0};mmaker #1.1:.{1} #0.1:.{2}'.format(sys.argv[1],pair[0],pair[1],os.getcwd()))
-	    else:
-                chimerarmsd.write('open #0 {3}/{0};open #1 {3}/{0};mmaker #1:.{1} #0:.{2}'.format(sys.argv[1],pair[0],pair[1],os.getcwd()))
-	    chimerarmsd.close()
+	    	### calculate the RMSD of the chains that were
+			chimerarmsd = open('{0}/chirmsd.cmd'.format(tmpdir),'w')
+			if NMR_ensemble ==True:
+				chimerarmsd.write('open #0 {3}/{0};open #1 {3}/{0};mmaker #1.1:.{1} #0.1:.{2}'.format(sys.argv[1],pair[0],pair[1],os.getcwd()))
+			else:
+				chimerarmsd.write('open #0 {3}/{0};open #1 {3}/{0};mmaker #1:.{1} #0:.{2}'.format(sys.argv[1],pair[0],pair[1],os.getcwd()))
+			chimerarmsd.close()
 	    
-	    ### run script 
-            runchimera2 = subprocess.Popen('{0} --nogui {1}/chirmsd.cmd'.format(chimerapath,tmpdir), shell=True, stdout=subprocess.PIPE,stderr=FNULL)
-            chimeraout2 = runchimera2.stdout.read()	    
+	    	### run script 
+ 			runchimera2 = subprocess.Popen('{0} --nogui {1}/chirmsd.cmd'.format(chimerapath,tmpdir), shell=True, stdout=subprocess.PIPE,stderr=FNULL)
+			chimeraout2 = runchimera2.stdout.read()	    
 	    
-	    for i in chimeraout2.split('\n'):
-                if 'RMSD' in i:
-		    rmsd = float(i.split()[-1].strip(')'))
-	            print('RMSD between matched chains = {0}\n'.format(rmsd))
-	    output = open('vis/{0}_colors.cmd'.format(filename.replace('/tmp/','/vis/'),pair[0],pair[1]),'w')
-            output.write('~distance; ')
-            output.write('transparency 0; ')
-            output.write('color white; ')
-            output.write('color cyan :.{0}; '.format(pair[0]))
-            output.write('color hotpink :.{0}; '.format(pair[1]))
-            for i in hitA:
-                output.write('color green {0}; '.format(i))
-            for i in missA:
-                output.write('color red {0}; '.format(i[0].split()[0]))
-                output.write('color blue {0}; '.format(i[0].split()[1]))
-                output.write('color yellow {0}; '.format(i[1][0]))
-                output.write('color orange {0}; '.format(i[1][1]))
-            output.write('transparency 90 @/color=white\n')
-            output.close()
-            mainout.write('{0}%%{1}%%{2}%%{3}%%{4}%%{5}%%{6}%%{7}\n'.format(sys.argv[1],pair[0],pair[1],len(contactsa),len(contactsb),corr,rmsd,chaindic[pair[0]][1]))
-            if homodimer >= 1:
-                homodimers = True 
-if homodimers == True:
-	stats.write('{0},{1},{2}\n'.format(sys.argv[1].split('/')[-1],'HOMODIMER(s)',homodimer))
+			for i in chimeraout2.split('\n'):
+				if 'RMSD' in i:
+					rmsd = float(i.split()[-1].strip(')'))
+					print('RMSD between chains {0}/{1} = {2}'.format(pair[0],pair[1],rmsd))
+			output = open('vis/{0}_colors.cmd'.format(filename.replace('/tmp/','/vis/'),pair[0],pair[1]),'w')
+			output.write('~distance; ')
+			output.write('transparency 0; ')
+			output.write('color white; ')
+			output.write('color cyan :.{0}; '.format(pair[0]))
+			output.write('color hotpink :.{0}; '.format(pair[1]))
+			for i in hitA:
+				output.write('color green {0}; '.format(i))
+			for i in missA:
+				output.write('color red {0}; '.format(i[0].split()[0]))
+				output.write('color blue {0}; '.format(i[0].split()[1]))
+				output.write('color yellow {0}; '.format(i[1][0]))
+				output.write('color orange {0}; '.format(i[1][1]))
+			output.write('transparency 90 @/color=white\n')
+			output.close()
+		
+		### finally check to see if dimer is designated as biological assembly in mmcif file
+			biodimer = min(dimer_assembly_list)
+			print('smallest designated biological oligomer: {0}-mer'.format(biodimer))
+		## write the main output deliniated with %% to deal with spaces,quotes,naostandard characters and other bullshit
+		## format is filename, Chain1, Chain2, number of 1->2 contacts, number of 2->1 contacts, contact correlation,rmsd,min biological dimer(T/F),protein name  
+			mainout.write('{0}%%{1}%%{2}%%{3}%%{4}%%{5}%%{6}%%{7}%%{8}\n'.format(sys.argv[1],pair[0],pair[1],len(contactsa),len(contactsb),corr,rmsd,biodimer,chaindic[pair[0]][1]))
+			if homodimer == True:
+				homodimers +=1 
+if homodimers >  0:
+	stats.write('{0},{1},{2}\n'.format(sys.argv[1].split('/')[-1],'HOMODIMER(s)',homodimers))
 else:
 	stats.write('{0},{1}\n'.format(sys.argv[1].split('/')[-1],'NOHOMODIMERS'))
 
