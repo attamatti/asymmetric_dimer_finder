@@ -423,6 +423,7 @@ for i in chainkeys:
 mainout = open('asym_dimer-find.txt','a')
 homodimers = False
 hdcount = 0
+reds,blues,yellows,oranges = [],[],[],[]
 for i in chifiles:
 	homodimer = False
 	pair = (i.split('/')[-1].split('_')[1])
@@ -469,7 +470,6 @@ for i in chifiles:
 				showlist.append(i.split('@')[0])
 				showlist.append(i.split()[-1].split('@')[0])
 			for i in missA:
-				reds,blues,yellows,oranges = [],[],[],[]
 				reds.append(i[0].split()[0])
 				showlist.append(i[0].split()[0].split('@')[0])
 				blues.append(i[0].split()[1])
