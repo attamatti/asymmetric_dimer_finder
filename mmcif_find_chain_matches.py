@@ -162,10 +162,12 @@ def get_polys(labels,data,skip):
     elif skip == True:
         return(labels)
 
-def parse_assembly(chunk):	
+def parse_assembly(chunk,ss):	
+	aidlist = []	
 	oligolist = []
 	dimer = False
 	if 'loop_\n' in chunk[0]:
+		aidlist = []		
 		labels = {}         #{label:column_number}
 		indata = False
 		data = []
@@ -196,12 +198,17 @@ def parse_assembly(chunk):
 				inww = not inww
 		findat = [splitdat[i:i + len(labels)] for i in xrange(0, len(splitdat), len(labels))]
 		for i in findat:
-			oligolist.append(int(i[labels['_pdbx_struct_assembly.oligomeric_count']]))
+			oligolist.append(i[labels[ss]])
+			try:			
+				aidlist.append(i[labels['_pdbx_struct_assembly.id']])
+			except:
+				aidlist.append(i[labels['_pdbx_struct_assembly_gen.assembly_id']])
 	else:
 		for i in chunk[0]:		
-			if '_pdbx_struct_assembly.oligomeric_count' in i:
-				oligolist = [int(i.replace('/n','').split()[-1])]
-	return(oligolist)
+			if ss in i:
+				oligolist = [i.replace('/n','').split()[-1]]
+		aidlist = [1]	
+	return(oligolist,aidlist)
 
 
 ### make necessary dirs
@@ -229,16 +236,26 @@ for i in chunks:
             NMR_ensemble = True
             break
 
-
 entity_chunk = (return_chunks(chunks,'_entity.id'))
 elabels,edata,skip = parse_loop(entity_chunk)
 polyids = (get_polys(elabels,edata,skip))            #{entityID:name}
 strand_chunk = (return_chunks(chunks,'_entity_poly.pdbx_strand_id'))
 
-try:
-	dimer_assembly_list = parse_assembly(return_chunks(chunks,'_pdbx_struct_assembly.oligomeric_details'))
-except:
-	dimer_assembly_list = [0]	
+
+#try:
+dimer_assembly_list,dimerids = parse_assembly(return_chunks(chunks,'_pdbx_struct_assembly.oligomeric_details'),'_pdbx_struct_assembly.oligomeric_count')
+oligo_assembly_list,oligoids = parse_assembly(return_chunks(chunks,'_pdbx_struct_assembly_gen.asym_id_list'),'_pdbx_struct_assembly_gen.asym_id_list')
+#except:
+#	dimer_assembly_list = [0]	
+#	oligo_assembly_list = []
+#print(dimer_assembly_list)
+#print(dimerids)
+oligodic = dict(zip(dimerids,dimer_assembly_list))		# {assembly ID:oligomeric state }
+#print ('odic',oligodic)
+#print(oligo_assembly_list)
+#print(oligoids)
+assemblydic = dict(zip(oligo_assembly_list,oligoids))	# {assembly chains:AssemblyID}
+#print('adic',assemblydic)
 
 ## get the entiy IDs and protein names of the different chains
 chaindic = {}           #{chain:entityID}
@@ -269,7 +286,6 @@ print('Chain\tID\tName')
 ### identify matching chains
 chainkeys = list(chaindic)
 chainkeys.sort()
-
 for i in chainkeys:                      #coverted to {chain:[entity_id,Name]}
     print('{0}\t{1}\t{2}'.format(i,chaindic[i],polyids[chaindic[i]]))
     chaindic[i] = [chaindic[i],polyids[chaindic[i]]]
@@ -458,8 +474,23 @@ for i in chifiles:
 			output.close()
 		
 		### finally check to see if dimer is designated as biological assembly in mmcif file
-			biodimer = min(dimer_assembly_list)
+			bdlist = []
+			for i in assemblydic:
+				if pair[0] in i and pair[1] in i:
+					bdlist.append(assemblydic[i])
+			hitlist = []
+			for i in bdlist:
+				hitlist.append(oligodic[i])
+			for i in bdlist:
+				if oligodic[i] == min(hitlist):
+					biodimer = oligodic[i]
+			if bdlist == []:
+				biodimer = 1
 			print('smallest designated biological oligomer: {0}-mer'.format(biodimer))
+	
+
+
+
 		## write the main output deliniated with %% to deal with spaces,quotes,naostandard characters and other bullshit
 		## format is filename, Chain1, Chain2, number of 1->2 contacts, number of 2->1 contacts, contact correlation,rmsd,min biological dimer(T/F),protein name  
 			mainout.write('{0}%%{1}%%{2}%%{3}%%{4}%%{5}%%{6}%%{7}%%{8}\n'.format(sys.argv[1],pair[0],pair[1],len(contactsa),len(contactsb),corr,rmsd,biodimer,chaindic[pair[0]][1]))
