@@ -452,25 +452,44 @@ for i in chifiles:
 	    	### run script 
  			runchimera2 = subprocess.Popen('{0} --nogui {1}/chirmsd.cmd'.format(chimerapath,tmpdir), shell=True, stdout=subprocess.PIPE,stderr=FNULL)
 			chimeraout2 = runchimera2.stdout.read()	    
-	    
+	    		
 			for i in chimeraout2.split('\n'):
 				if 'RMSD' in i:
 					rmsd = float(i.split()[-1].strip(')'))
-					print('RMSD between chains {0}/{1} = {2}'.format(pair[0],pair[1],rmsd))
+					print('RMSD between chains {0}/{1} = {2}'.format(pair[0],pair[1],rmsd))			
+			showlist = []			
 			output = open('vis/{0}_colors.cmd'.format(filename.replace('/tmp/','/vis/'),pair[0],pair[1]),'w')
-			output.write('~distance; ')
 			output.write('transparency 0; ')
 			output.write('color white; ')
 			output.write('color cyan :.{0}; '.format(pair[0]))
 			output.write('color hotpink :.{0}; '.format(pair[1]))
+			hitcolor = []			
 			for i in hitA:
-				output.write('color green {0}; '.format(i))
+				hitcolor.append('{0}'.format(i))
+				showlist.append(i.split('@')[0])
+				showlist.append(i.split()[-1].split('@')[0])
 			for i in missA:
-				output.write('color red {0}; '.format(i[0].split()[0]))
-				output.write('color blue {0}; '.format(i[0].split()[1]))
-				output.write('color yellow {0}; '.format(i[1][0]))
-				output.write('color orange {0}; '.format(i[1][1]))
+				reds,blues,yellows,oranges = [],[],[],[]
+				reds.append(i[0].split()[0])
+				showlist.append(i[0].split()[0].split('@')[0])
+				blues.append(i[0].split()[1])
+				showlist.append(i[0].split()[1].split('@')[0])				
+				yellows.append(i[1][0])
+				showlist.append(i[1][0].split('@')[0])				
+				oranges.append(i[1][1])	
+				showlist.append(i[1][1].split('@')[0])		
+			output.write('show {0}\n'.format(' '.join(showlist)))			
 			output.write('transparency 90 @/color=white\n')
+			if len(hitA) > 0:			
+				output.write('color green {0}; '.format(' '.join(hitcolor)))			
+			if len(reds) > 0:
+				output.write('color red {0}; '.format(' '.join(reds)))
+			if len(blues) > 0:
+				output.write('color blue {0}; '.format(' '.join(blues)))
+			if len(yellows) > 0:
+				output.write('color yellow {0}; '.format(' '.join(yellows)))
+			if len(oranges) > 0:
+				output.write('color orange {0}; '.format(' '.join(oranges)))
 			output.close()
 		
 		### finally check to see if dimer is designated as biological assembly in mmcif file
